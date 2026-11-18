@@ -73,6 +73,13 @@ day bar by bar without waiting.
   triggered, expired, or no data. Before 9:30: not open yet. Before 9:45: the
   range is still forming. Weekends and NYSE holidays: the market is closed.
 
+## Canadian tickers (.TO / .V)
+
+Toronto (`RY.TO`, `CTC.A.TO`, `AP.UN.TO`) and TSX Venture (`ONE.V`) tickers
+work as they are: the tool asks Yahoo for `CTC-A.TO` and uses the TSX holiday
+calendar for them (Boxing Day closed, US Thanksgiving open, 1:00 p.m. close on
+Christmas Eve). Prices are Canadian dollars even where a line prints `$`.
+
 ## Steps
 
 1. Get the symbol from the user, or run `entry.py watchlist` after

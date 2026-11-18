@@ -191,8 +191,20 @@ class Fetcher(object):
             raise NewsError("could not reach %s: %s" % (url, exc.reason))
 
 
+CA_SUFFIXES = (".TO", ".V")   # Toronto Stock Exchange, TSX Venture
+
+
+def is_canadian(ticker):
+    return str(ticker or "").strip().upper().endswith(CA_SUFFIXES)
+
+
 def yahoo_symbol(ticker):
-    return ticker.upper().replace(".", "-")
+    """BRK.B -> BRK-B; a Canadian ticker keeps its exchange suffix: CTC.A.TO -> CTC-A.TO."""
+    s = str(ticker or "").strip().upper()
+    for suf in CA_SUFFIXES:
+        if s.endswith(suf):
+            return s[:-len(suf)].replace(".", "-") + suf
+    return s.replace(".", "-")
 
 
 def cik_map(fetcher, state):
@@ -329,6 +341,9 @@ def mention_patterns(watch):
     for t, name in watch.items():
         alts = [r"\(%s\)" % re.escape(t), r"\$%s\b" % re.escape(t),
                 r"\b(?:NYSE|NASDAQ|Nasdaq)\s*:\s*%s\b" % re.escape(t)]
+        if is_canadian(t):  # headlines write (TSX:RY) or TSXV: ONE, without the .TO / .V
+            base = re.escape(t.rsplit(".", 1)[0])
+            alts.append(r"\b(?:TSX|TSXV|TSX-V|TSX Venture)\s*:\s*%s\b" % base)
         if name and len(name) >= 4:
             alts.append(r"\b%s\b" % re.escape(name).replace(r"\ ", r"[\s-]"))
         pats[t] = re.compile("|".join(alts))
@@ -392,7 +407,14 @@ def collect(fetcher, watch, state, sec=True, forms=("8-K",), count=10, errors=No
         except NewsError as exc:
             errors.append("SEC ticker list: %s" % exc)
             ciks = {}
+        canadian = [t for t in sorted(watch) if is_canadian(t)]
+        if canadian:
+            errors.append("no SEC filings for %s: Canadian companies file on SEDAR+ (sedarplus.ca), "
+                          "which this tool does not read; headlines and moves still cover them"
+                          % ", ".join(canadian))
         for t in sorted(watch):
+            if is_canadian(t):
+                continue
             cik = ciks.get(t)
             if not cik:
                 if ciks:

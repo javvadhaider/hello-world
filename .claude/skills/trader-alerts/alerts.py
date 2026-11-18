@@ -90,6 +90,62 @@ NYSE_EARLY_CLOSE = {  # 1:00 p.m. ET
     "2026-12-24": "Christmas Eve",
     "2027-11-26": "day after Thanksgiving",
 }
+
+# Toronto Stock Exchange and TSX Venture (tsx.com, read 2026-11-18): tickers that
+# end in .TO or .V (RY.TO, CTC.A.TO, ONE.V) use this calendar. Same hours as New York.
+TSX_HOLIDAYS = {
+    "2026-01-01": "New Year's Day",
+    "2026-02-16": "Family Day",
+    "2026-04-03": "Good Friday",
+    "2026-05-18": "Victoria Day",
+    "2026-07-01": "Canada Day",
+    "2026-08-03": "Civic Holiday",
+    "2026-09-07": "Labour Day",
+    "2026-10-12": "Thanksgiving Day",
+    "2026-12-25": "Christmas Day",
+    "2026-12-28": "Boxing Day (observed)",
+    "2027-01-01": "New Year's Day",
+    "2027-02-15": "Family Day",
+    "2027-03-26": "Good Friday",
+    "2027-05-24": "Victoria Day",
+    "2027-07-01": "Canada Day",
+    "2027-08-02": "Civic Holiday",
+    "2027-09-06": "Labour Day",
+    "2027-10-11": "Thanksgiving Day",
+    "2027-12-27": "Christmas Day (observed)",
+    "2027-12-28": "Boxing Day (observed)",
+}
+TSX_EARLY_CLOSE = {  # 1:00 p.m. ET
+    "2026-12-24": "Christmas Eve",
+    "2027-12-24": "Christmas Eve",
+}
+CA_SUFFIXES = (".TO", ".V")
+US_HOLIDAYS, US_EARLY_CLOSE = NYSE_HOLIDAYS, NYSE_EARLY_CLOSE
+EXCHANGE = "NYSE"
+
+
+def is_canadian(sym):
+    """True for a Toronto (.TO) or TSX Venture (.V) ticker."""
+    return str(sym or "").strip().upper().endswith(CA_SUFFIXES)
+
+
+def yahoo_ticker(sym):
+    """BRK.B -> BRK-B; a Canadian ticker keeps its exchange suffix: CTC.A.TO -> CTC-A.TO."""
+    s = str(sym or "").strip().upper()
+    for suf in CA_SUFFIXES:
+        if s.endswith(suf):
+            return s[:-len(suf)].replace(".", "-") + suf
+    return s.replace(".", "-")
+
+
+def use_market(sym):
+    """Switch this run's calendar to the ticker's exchange: the TSX for .TO / .V, else the NYSE."""
+    global NYSE_HOLIDAYS, NYSE_EARLY_CLOSE, EXCHANGE
+    if is_canadian(sym):
+        NYSE_HOLIDAYS, NYSE_EARLY_CLOSE, EXCHANGE = TSX_HOLIDAYS, TSX_EARLY_CLOSE, "TSX"
+    else:
+        NYSE_HOLIDAYS, NYSE_EARLY_CLOSE, EXCHANGE = US_HOLIDAYS, US_EARLY_CLOSE, "NYSE"
+
 CALENDAR_YEARS = (2026, 2027)
 OPEN = datetime.time(9, 30)
 CLOSE = datetime.time(16, 0)
@@ -151,7 +207,7 @@ def trading_day(d):
         return False, "weekend"
     name = NYSE_HOLIDAYS.get(d.isoformat())
     if name:
-        return False, "NYSE holiday: " + name
+        return False, "%s holiday: %s" % (EXCHANGE, name)
     return True, ""
 
 
@@ -194,11 +250,13 @@ def market_status(now_utc):
 # ---------------------------------------------------------------- quotes
 
 def stooq_url(sym):
+    if is_canadian(sym):
+        raise AlertError("Stooq's free quotes here are US-only: use --source yahoo for %s" % sym)
     return "https://stooq.com/q/l/?s=%s.us&f=sd2t2ohlcv&h&e=csv" % sym.lower().replace(".", "-")
 
 
 def yahoo_url(sym, host=YAHOO_HOSTS[0]):
-    return "https://%s/v8/finance/chart/%s?range=1d&interval=1d" % (host, sym.upper().replace(".", "-"))
+    return "https://%s/v8/finance/chart/%s?range=1d&interval=1d" % (host, yahoo_ticker(sym))
 
 
 def parse_stooq(text, sym):
@@ -441,7 +499,7 @@ def evaluate(rules, quotes, status, state, now_utc):
         typ = {"stop": "below", "target": "above"}.get(r["type"], r["type"])
         if typ == "opening_bell":
             if status["open"] and not _rang_today(rung.get(rid), today):
-                rings.append({"id": rid, "symbol": "", "message": "Opening bell: the NYSE is open (%s New York)%s."
+                rings.append({"id": rid, "symbol": "", "message": "Opening bell: the " + EXCHANGE + " is open (%s New York)%s."
                               % (status["now_new_york"], (", early close at 1:00 p.m. today, "
                                                           + status["early_close"]) if status.get("early_close") else "")})
                 rung[rid] = stamp
@@ -543,11 +601,13 @@ def _dedupe(items):
 
 
 def cmd_clock(a):
+    if a.market == "ca":
+        use_market(".TO")
     st = market_status(parse_now(a.now))
     if a.json:
         print(json.dumps(st, indent=2))
     else:
-        print("New York %s (%s): NYSE %s, %s." % (st["now_new_york"], st["weekday"],
+        print("New York %s (%s): %s %s, %s." % (st["now_new_york"], st["weekday"], EXCHANGE,
                                                   "OPEN" if st["open"] else "closed", st["reason"]))
         if st.get("opens"):
             print("Today's session: %s to %s%s." % (st["opens"], st["closes"],
@@ -555,7 +615,7 @@ def cmd_clock(a):
         if not st["open"] and st.get("next_open"):
             print("Next open: %s New York." % st["next_open"])
         if not st["calendar_known"]:
-            print("Holiday list covers %s only: check nyse.com for this date." % " and ".join(map(str, CALENDAR_YEARS)))
+            print("Holiday list covers %s only: check " + ("tsx.com" if EXCHANGE == "TSX" else "nyse.com") + " for this date." % " and ".join(map(str, CALENDAR_YEARS)))
     return 0 if st["open"] else 1
 
 
@@ -591,6 +651,9 @@ def cmd_check(a):
         raise AlertError("no rules in %s: add some with alerts.py add --from-plan" % a.rules)
     rules = doc["rules"]
     now = parse_now(a.now)
+    tickers = [str(r.get("symbol") or "") for r in rules if r.get("symbol")]
+    if tickers and all(is_canadian(t) for t in tickers):
+        use_market(tickers[0])  # every rule is a Toronto / TSX Venture ticker: the TSX calendar
     status = market_status(now)
     watched = [r for r in rules if active(r, status["date"])]
     syms = _dedupe([str(r.get("symbol", "")).upper() for r in watched if r.get("type") not in NO_QUOTE])
@@ -605,7 +668,7 @@ def cmd_check(a):
         print(json.dumps({"market": status, "rings": rings, "errors": errors,
                           "quotes": {s: q["price"] for s, q in quotes.items()}}, indent=2))
     else:
-        print("NYSE %s (%s New York, %s)." % ("OPEN" if status["open"] else "closed", status["now_new_york"],
+        print("%s %s (%s New York, %s)." % (EXCHANGE, "OPEN" if status["open"] else "closed", status["now_new_york"],
                                               status["reason"]))
         for r in rings:
             print("ALERT " + r["message"])
@@ -725,7 +788,8 @@ def main(argv=None):
         p.add_argument("--now", help="pretend it is this time (no offset = New York time)")
         p.add_argument("--json", action="store_true")
 
-    p = sub.add_parser("clock", help="is the NYSE open?")
+    p = sub.add_parser("clock", help="is the NYSE (or, with --market ca, the TSX) open?")
+    p.add_argument("--market", choices=("us", "ca"), default="us")
     p.add_argument("--now")
     p.add_argument("--json", action="store_true")
     p = sub.add_parser("quote", help="latest delayed quotes")

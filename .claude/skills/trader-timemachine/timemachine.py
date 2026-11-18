@@ -101,6 +101,62 @@ NYSE_EARLY_CLOSE = {  # 1:00 p.m. ET, from https://www.nyse.com/markets/hours-ca
     "2026-12-24": "Christmas Eve",
     "2027-11-26": "day after Thanksgiving",
 }
+
+# Toronto Stock Exchange and TSX Venture (tsx.com, read 2026-11-18): tickers that
+# end in .TO or .V (RY.TO, CTC.A.TO, ONE.V) use this calendar. Same hours as New York.
+TSX_HOLIDAYS = {
+    "2026-01-01": "New Year's Day",
+    "2026-02-16": "Family Day",
+    "2026-04-03": "Good Friday",
+    "2026-05-18": "Victoria Day",
+    "2026-07-01": "Canada Day",
+    "2026-08-03": "Civic Holiday",
+    "2026-09-07": "Labour Day",
+    "2026-10-12": "Thanksgiving Day",
+    "2026-12-25": "Christmas Day",
+    "2026-12-28": "Boxing Day (observed)",
+    "2027-01-01": "New Year's Day",
+    "2027-02-15": "Family Day",
+    "2027-03-26": "Good Friday",
+    "2027-05-24": "Victoria Day",
+    "2027-07-01": "Canada Day",
+    "2027-08-02": "Civic Holiday",
+    "2027-09-06": "Labour Day",
+    "2027-10-11": "Thanksgiving Day",
+    "2027-12-27": "Christmas Day (observed)",
+    "2027-12-28": "Boxing Day (observed)",
+}
+TSX_EARLY_CLOSE = {  # 1:00 p.m. ET
+    "2026-12-24": "Christmas Eve",
+    "2027-12-24": "Christmas Eve",
+}
+CA_SUFFIXES = (".TO", ".V")
+US_HOLIDAYS, US_EARLY_CLOSE = None, NYSE_EARLY_CLOSE
+EXCHANGE = "NYSE"
+
+
+def is_canadian(sym):
+    """True for a Toronto (.TO) or TSX Venture (.V) ticker."""
+    return str(sym or "").strip().upper().endswith(CA_SUFFIXES)
+
+
+def yahoo_ticker(sym):
+    """BRK.B -> BRK-B; a Canadian ticker keeps its exchange suffix: CTC.A.TO -> CTC-A.TO."""
+    s = str(sym or "").strip().upper()
+    for suf in CA_SUFFIXES:
+        if s.endswith(suf):
+            return s[:-len(suf)].replace(".", "-") + suf
+    return s.replace(".", "-")
+
+
+def use_market(sym):
+    """Switch this run's calendar to the ticker's exchange: the TSX for .TO / .V, else the NYSE."""
+    global NYSE_EARLY_CLOSE, EXCHANGE
+    if is_canadian(sym):
+        NYSE_EARLY_CLOSE, EXCHANGE = TSX_EARLY_CLOSE, "TSX"
+    else:
+        NYSE_EARLY_CLOSE, EXCHANGE = US_EARLY_CLOSE, "NYSE"
+
 EARLY_MIN = 13 * 60
 
 
@@ -187,7 +243,7 @@ def clock24(minutes):
 
 def chart_url(sym, host="query2"):
     return "https://%s.finance.yahoo.com/v8/finance/chart/%s?range=60d&interval=5m" % (
-        host, urllib.parse.quote(sym.upper().replace(".", "-")))
+        host, urllib.parse.quote(yahoo_ticker(sym)))
 
 
 def _sleep(seconds):
@@ -683,10 +739,11 @@ def time_machine(text, plan, now_utc, replays=10000, seed=19, window=2, until=No
     if not 0 <= window <= 10:
         raise TMError("--window must be between 0 and 10 bars")
     sym = plan["symbol"]
+    use_market(sym)
     result = chart_result(text, sym)
     meta, bars, dropped = parse_bars(result, now_utc)
     msym = str(meta.get("symbol") or "").upper()
-    if msym and msym != sym.replace(".", "-"):
+    if msym and msym != yahoo_ticker(sym):
         raise TMError("the data is for %s but the plan is for %s" % (msym, sym))
     gran = meta.get("dataGranularity")
     if gran and gran != "5m":

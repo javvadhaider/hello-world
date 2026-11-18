@@ -84,7 +84,8 @@ PRICE_FIELDS = ("qty", "notional", "limit_price", "stop_price", "take_profit_lim
 TYPES = {"market", "limit", "stop", "stop_limit", "trailing_stop"}
 TIFS = {"day", "gtc", "opg", "cls", "ioc", "fok"}
 OCC = re.compile(r"^[A-Z]{1,6}\d{6}[CP]\d{8}$")
-TICKER = re.compile(r"^[A-Z]{1,5}([.\-][A-Z]{1,2})?$")
+TICKER = re.compile(r"^[A-Z]{1,5}([.\-][A-Z]{1,2})?$"                 # US: TSLA, BRK.B
+                    r"|^[A-Z]{1,6}([.\-][A-Z]{1,2})?\.(TO|V)$")       # Canada: RY.TO, CTC.A.TO, ONE.V
 HHMM = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
 CENT = 0.005
 FRESH_MINUTES = 15
@@ -118,6 +119,62 @@ NYSE_EARLY_CLOSE = {  # 1:00 p.m. ET
     "2026-12-24": "Christmas Eve",
     "2027-11-26": "day after Thanksgiving",
 }
+
+# Toronto Stock Exchange and TSX Venture (tsx.com, read 2026-11-18): tickers that
+# end in .TO or .V (RY.TO, CTC.A.TO, ONE.V) use this calendar. Same hours as New York.
+TSX_HOLIDAYS = {
+    "2026-01-01": "New Year's Day",
+    "2026-02-16": "Family Day",
+    "2026-04-03": "Good Friday",
+    "2026-05-18": "Victoria Day",
+    "2026-07-01": "Canada Day",
+    "2026-08-03": "Civic Holiday",
+    "2026-09-07": "Labour Day",
+    "2026-10-12": "Thanksgiving Day",
+    "2026-12-25": "Christmas Day",
+    "2026-12-28": "Boxing Day (observed)",
+    "2027-01-01": "New Year's Day",
+    "2027-02-15": "Family Day",
+    "2027-03-26": "Good Friday",
+    "2027-05-24": "Victoria Day",
+    "2027-07-01": "Canada Day",
+    "2027-08-02": "Civic Holiday",
+    "2027-09-06": "Labour Day",
+    "2027-10-11": "Thanksgiving Day",
+    "2027-12-27": "Christmas Day (observed)",
+    "2027-12-28": "Boxing Day (observed)",
+}
+TSX_EARLY_CLOSE = {  # 1:00 p.m. ET
+    "2026-12-24": "Christmas Eve",
+    "2027-12-24": "Christmas Eve",
+}
+CA_SUFFIXES = (".TO", ".V")
+US_HOLIDAYS, US_EARLY_CLOSE = NYSE_HOLIDAYS, NYSE_EARLY_CLOSE
+EXCHANGE = "NYSE"
+
+
+def is_canadian(sym):
+    """True for a Toronto (.TO) or TSX Venture (.V) ticker."""
+    return str(sym or "").strip().upper().endswith(CA_SUFFIXES)
+
+
+def yahoo_ticker(sym):
+    """BRK.B -> BRK-B; a Canadian ticker keeps its exchange suffix: CTC.A.TO -> CTC-A.TO."""
+    s = str(sym or "").strip().upper()
+    for suf in CA_SUFFIXES:
+        if s.endswith(suf):
+            return s[:-len(suf)].replace(".", "-") + suf
+    return s.replace(".", "-")
+
+
+def use_market(sym):
+    """Switch this run's calendar to the ticker's exchange: the TSX for .TO / .V, else the NYSE."""
+    global NYSE_HOLIDAYS, NYSE_EARLY_CLOSE, EXCHANGE
+    if is_canadian(sym):
+        NYSE_HOLIDAYS, NYSE_EARLY_CLOSE, EXCHANGE = TSX_HOLIDAYS, TSX_EARLY_CLOSE, "TSX"
+    else:
+        NYSE_HOLIDAYS, NYSE_EARLY_CLOSE, EXCHANGE = US_HOLIDAYS, US_EARLY_CLOSE, "NYSE"
+
 CALENDAR_YEARS = (2026, 2027)
 OPEN = datetime.time(9, 30)
 CLOSE = datetime.time(16, 0)
@@ -191,7 +248,7 @@ def trading_day(d):
         return False, "weekend"
     name = NYSE_HOLIDAYS.get(d.isoformat())
     if name:
-        return False, "NYSE holiday: " + name
+        return False, "%s holiday: %s" % (EXCHANGE, name)
     return True, ""
 
 
@@ -219,8 +276,9 @@ def window_check(now_et, c):
     warns = []
     d, t = now_et.date(), now_et.time().replace(second=0, microsecond=0)
     if d.year not in CALENDAR_YEARS:
-        warns.append("the holiday list covers %s only: check nyse.com for %s"
-                     % (" and ".join(map(str, CALENDAR_YEARS)), d.isoformat()))
+        warns.append("the holiday list covers %s only: check %s for %s"
+                     % (" and ".join(map(str, CALENDAR_YEARS)), "tsx.com" if EXCHANGE == "TSX" else "nyse.com",
+                        d.isoformat()))
     ok, why = trading_day(d)
     stamp = now_et.strftime("%a %Y-%m-%d %H:%M")
     if not ok:
@@ -377,6 +435,9 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
     price_times  {SYM: naive UTC time of that price}; None = every price counts as fresh"""
     c = dict(DEFAULTS)
     c.update(cfg or {})
+    syms = [str((o or {}).get("symbol") or "") for o in (orders or []) if isinstance(o, dict)]
+    canadian = [x for x in syms if is_canadian(x)]
+    use_market(canadian[0] if canadian and len(canadian) == len(syms) else "")
     prices = {str(k).upper(): float(v) for k, v in (prices or {}).items() if _f(v)}
     now_utc = now or parse_now(None)
     now_et = to_eastern(now_utc)
@@ -396,6 +457,12 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
             loss_today += ml
     placed_keys = {(str(r.get("symbol", "")).upper(), r.get("side")) for r in done_today}
     win_reasons, win_warns = window_check(now_et, c)
+    if canadian and len(canadian) != len(syms):
+        win_warns = win_warns + ["US and Canadian orders together: the NYSE calendar was used; check "
+                                 "tsx.com for a Canadian holiday"]
+    if canadian:
+        win_warns = win_warns + ["Canadian ticker(s) %s: amounts are in Canadian dollars, and Alpaca cannot "
+                                 "trade them; place them by hand at your Canadian broker" % ", ".join(canadian)]
     pdt_n, pdt_list = day_trades(state, today) if c.get("pdt_guard") else (0, [])
     seen = set()
     results = []
@@ -480,7 +547,7 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
             else:
                 warns.append("option order: options can lose 100%% of what you pay")
         elif sym and ("/" in sym or not TICKER.match(sym)):
-            reasons.append("asset: %s does not look like a US stock or ETF ticker; "
+            reasons.append("asset: %s does not look like a US or Canadian (.TO / .V) stock or ETF ticker; "
                            "this pack trades stocks and ETFs only" % sym)
 
         # the reference price: what one share costs to get in

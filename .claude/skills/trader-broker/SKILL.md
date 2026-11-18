@@ -135,6 +135,15 @@ submits orders directly to the market. So with IBKR the final yes happens in
 IBKR as well. Set `"broker": "ibkr"` in `trader/config.json`. Set its tools
 that draft orders to Needs approval too.
 
+## Canadian tickers (.TO / .V)
+
+Alpaca trades US stocks only. For a Toronto (`RY.TO`) or TSX Venture (`ONE.V`)
+order the ticket still shows the bracket and still needs trader-risk's PASS and
+the user's yes, but instead of the `place_stock_order` JSON it says to enter it
+by hand at the user's Canadian broker (Questrade, Wealthsimple, IBKR...), in
+Canadian dollars. Never call `place_stock_order` for one. After they enter it:
+`ticket.py result --index N --status placed|failed`.
+
 ## Steps: the entry
 
 1. `ticket.py show`. Only READY tickets go to the user. A ticket that is NOT

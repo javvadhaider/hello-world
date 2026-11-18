@@ -69,6 +69,15 @@ rules carry the plan's date, so yesterday's stop never rings today. A `time`
 rule with `"before_close": true` moves 3 hours earlier on a 1:00 p.m. early
 close, so "flat by close" at 15:55 rings at 12:55 on those days.
 
+## Canadian tickers (.TO / .V)
+
+Toronto (`RY.TO`, `CTC.A.TO`, `AP.UN.TO`) and TSX Venture (`ONE.V`) tickers
+work as they are: the tool asks Yahoo for `CTC-A.TO` and uses the TSX holiday
+calendar for them (Boxing Day closed, US Thanksgiving open, 1:00 p.m. close on
+Christmas Eve). Prices are Canadian dollars even where a line prints `$`.
+`alerts.py clock --market ca` says whether the TSX is open. A rule list that is all
+Canadian uses the TSX calendar; Stooq is US-only, so Canadian quotes come from Yahoo.
+
 ## Quotes
 
 - `yahoo` (default): `query2.finance.yahoo.com/v8/finance/chart/<TICKER>`, an

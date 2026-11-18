@@ -59,6 +59,13 @@ python3 "${CLAUDE_SKILL_DIR}/news.py" --no-sec --json
 - **No predictions.** Report what was published and how far the price is from
   yesterday's close. Never say what the stock will do next.
 
+## Canadian tickers (.TO / .V)
+
+Headlines and moves work for `RY.TO`, `CTC.A.TO`, `ONE.V`, and a headline that
+writes `(TSX: RY)` or `TSXV: ONE` counts as a mention. SEC filings are skipped
+for them, with a note: Canadian companies file on SEDAR+ (sedarplus.ca), which
+this tool does not read. Pass several tickers with spaces: `--tickers RY.TO IVN.TO`.
+
 ## Steps
 
 1. Run the check: `python3 "${CLAUDE_SKILL_DIR}/news.py"`. Exit code 1 means

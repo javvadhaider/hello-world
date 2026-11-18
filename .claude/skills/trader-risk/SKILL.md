@@ -102,6 +102,15 @@ Warnings do not block, but say them to the user: a LIVE account, a number
 sent as a number instead of a string, a stop that lives only in the plan and
 not at the broker, a price too old to use, an early close today.
 
+## Canadian tickers (.TO / .V)
+
+`RY.TO`, `CTC.A.TO`, `AP.UN.TO` and `ONE.V` are accepted. When every order is
+Canadian, the market-hours check uses the TSX calendar (Boxing Day closed, US
+Thanksgiving open); a mix of US and Canadian orders uses the NYSE's, with a
+warning. A Canadian order carries a warning that its amounts are Canadian
+dollars and that it goes in by hand at a Canadian broker. The dollar limits in
+trader/config.json are read in the order's own currency.
+
 ## Steps
 
 1. If the price may have moved since the plan, refresh it first

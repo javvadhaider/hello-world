@@ -12,6 +12,10 @@ description: >-
   "what is breaking out", "opening range breakouts", "scan for bull flags",
   "oversold stocks", "pre-market scan", "build my watchlist", "what should I
   look at today", or at the start of a trading day before /trader-news.
+  With --market ca it scans Canada instead: the Toronto Stock Exchange (.TO)
+  and TSX Venture (.V) from tsx.com's company directory, on the TSX holiday
+  calendar, prices in Canadian dollars. Use it when the user says "Canadian
+  stocks", "TSX", "Toronto", "TSX Venture", "scan Canada".
 argument-hint: "[universe | daily | orb] [--at HH:MM]"
 ---
 
@@ -130,6 +134,38 @@ bar counts only once it is complete (start + 5 minutes). Before 9:50 AM, on a
 weekend or holiday, after the close, or after `no_entries_after` (an expired
 setup) it prints one plain line and writes nothing. The 1:00 PM early closes
 are in the calendar.
+
+## Canada: the TSX and the TSX Venture (`--market ca`)
+
+```bash
+python3 "${CLAUDE_SKILL_DIR}/scan.py" universe --market ca            # tsx.com -> trader/universe-ca.txt
+python3 "${CLAUDE_SKILL_DIR}/scan.py" universe --market ca --no-cdr   # without CDRs (CAD copies of US stocks)
+python3 "${CLAUDE_SKILL_DIR}/scan.py" daily --market ca               # before the open -> trader/watchlist.json
+python3 "${CLAUDE_SKILL_DIR}/scan.py" orb --market ca                 # after 9:50 AM ET
+```
+
+- **Tickers** are Yahoo's: `RY.TO` (Toronto), `ONE.V` (TSX Venture), a class
+  or a trust unit keeps its dot (`CTC.A.TO`, `AP.UN.TO`; Yahoo is asked for
+  `CTC-A.TO`). Every other trader-* skill takes these tickers as they are.
+- **The universe** is tsx.com's company directory (`www.tsx.com/json/company-directory/search/tsx|tsxv/^*`):
+  plain tickers, one class letter and `.UN` units stay; preferreds (`.PR`, `.PF`),
+  debentures and notes, warrants, rights, US-dollar lines (`.U`), capital pool
+  companies (`.P`) and names that say ETF are out. ETFs the names do not give
+  away are dropped at scan time from Yahoo's `instrumentType`. CDRs (Canadian
+  Depositary Receipts, like `NVDA.TO`: a US stock in Canadian dollars) stay
+  unless `--no-cdr`. On Nov 18 2026: 4,565 listings, 2,461 kept (1,182 TSX,
+  1,279 TSX Venture), 144 of them CDRs.
+- **Floors**: C$1 and, for the daily scan, 100,000 shares (`--min-price`,
+  `--min-volume` change them). Toronto trades less than New York.
+- **The calendar** is the TSX's (tsx.com, 2026 and 2027): Family Day, Victoria
+  Day, Canada Day, the Civic Holiday, Thanksgiving in October, Boxing Day; a
+  1:00 p.m. close on Christmas Eve. Hours are the same as New York (9:30 to 4:00 ET).
+- **Thin charts**: many TSX Venture names skip 5-minute bars with no trades.
+  The opening-range scan and the Time Machine need every bar, so they leave
+  those out. That is the rule working, not a fault.
+- Prices print as `C$`. trader-news skips SEC for Canadian tickers (they file
+  on SEDAR+), and trader-broker prints a ticket to enter by hand at a Canadian
+  broker: Alpaca trades US stocks only.
 
 ## Data and limits
 

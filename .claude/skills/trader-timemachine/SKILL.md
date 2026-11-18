@@ -96,6 +96,15 @@ not in the data (wrong date, not closed yet, a future day), or when the plan
 does not make sense (a stop above a buy's entry, an entry off the 5-minute
 grid). A live in-progress bar is never used.
 
+## Canadian tickers (.TO / .V)
+
+Toronto (`RY.TO`, `CTC.A.TO`, `AP.UN.TO`) and TSX Venture (`ONE.V`) tickers
+work as they are: the tool asks Yahoo for `CTC-A.TO` and uses the TSX holiday
+calendar for them (Boxing Day closed, US Thanksgiving open, 1:00 p.m. close on
+Christmas Eve). Prices are Canadian dollars even where a line prints `$`.
+Thinly traded names that skip 5-minute bars (common on the TSX Venture) have
+too few full sessions; the tool says so and stops.
+
 ## Steps
 
 1. Make sure `trader/plan.json` is today's plan from `/trader-exit`. If there

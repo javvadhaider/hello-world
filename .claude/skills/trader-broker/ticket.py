@@ -349,6 +349,16 @@ def kind_of(order, rv):
 
 # ---------------------------------------------------------------- rendering
 
+def is_canadian(sym):
+    """A Toronto (.TO) or TSX Venture (.V) ticker: Alpaca cannot trade it."""
+    return str(sym or "").strip().upper().endswith((".TO", ".V"))
+
+
+MANUAL = ["  Alpaca trades US stocks only, so Claude cannot send this one. Enter it by hand at",
+          "  your Canadian broker (Questrade, Wealthsimple, IBKR...) exactly as above, in",
+          "  Canadian dollars: the entry, then the stop-loss and the take-profit."]
+
+
 def render(order, idx, total, cfg, risk, state, today):
     ready, label, rv = status_of(order, risk, state, today)
     broker = str(cfg.get("broker", "alpaca")).lower()
@@ -362,7 +372,10 @@ def render(order, idx, total, cfg, risk, state, today):
     lines.append("  " + label)
     for w in (rv or {}).get("warnings", []):
         lines.append("  note: " + w)
-    if broker == "ibkr":
+    manual = broker != "ibkr" and is_canadian(order.get("symbol"))
+    if manual:
+        lines.extend(MANUAL)
+    elif broker == "ibkr":
         lines.append("  Claude drafts this with the Interactive Brokers connector. IBKR sends it to your")
         lines.append("  IBKR account, and it only goes to the market after you approve it there.")
     else:
@@ -374,7 +387,7 @@ def render(order, idx, total, cfg, risk, state, today):
             lines.append("  that cancel each other: when one fills, the other is canceled.")
     if ready:
         lines.append("  Reply \"yes\" to place this one order, or \"no\" to skip it.")
-        if broker != "ibkr":
+        if broker != "ibkr" and not manual:
             lines.append("  Claude's own card then asks again: Allow once places it, Deny stops it.")
     return "\n".join(lines), ready
 
@@ -518,6 +531,10 @@ def cmd_approve(a):
     print("Recorded your yes for order %d: %s." % (a.index, plain(order)))
     if str(cfg.get("broker", "alpaca")).lower() == "ibkr":
         print("Now draft it with the Interactive Brokers connector; approve it in your IBKR account.")
+    elif is_canadian(order.get("symbol")):
+        print("\n".join(l.strip() for l in MANUAL))
+        print("Do not call place_stock_order. Once you have entered it: ticket.py result --index %d "
+              "--status placed|failed" % a.index)
     else:
         print("Now call place_stock_order with exactly:")
         print(json.dumps(tool_input(order), indent=2))

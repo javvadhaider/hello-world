@@ -98,6 +98,62 @@ NYSE_EARLY_CLOSE = {  # 1:00 p.m. ET
     "2026-12-24": "Christmas Eve",
     "2027-11-26": "day after Thanksgiving",
 }
+
+# Toronto Stock Exchange and TSX Venture (tsx.com, read 2026-11-18): tickers that
+# end in .TO or .V (RY.TO, CTC.A.TO, ONE.V) use this calendar. Same hours as New York.
+TSX_HOLIDAYS = {
+    "2026-01-01": "New Year's Day",
+    "2026-02-16": "Family Day",
+    "2026-04-03": "Good Friday",
+    "2026-05-18": "Victoria Day",
+    "2026-07-01": "Canada Day",
+    "2026-08-03": "Civic Holiday",
+    "2026-09-07": "Labour Day",
+    "2026-10-12": "Thanksgiving Day",
+    "2026-12-25": "Christmas Day",
+    "2026-12-28": "Boxing Day (observed)",
+    "2027-01-01": "New Year's Day",
+    "2027-02-15": "Family Day",
+    "2027-03-26": "Good Friday",
+    "2027-05-24": "Victoria Day",
+    "2027-07-01": "Canada Day",
+    "2027-08-02": "Civic Holiday",
+    "2027-09-06": "Labour Day",
+    "2027-10-11": "Thanksgiving Day",
+    "2027-12-27": "Christmas Day (observed)",
+    "2027-12-28": "Boxing Day (observed)",
+}
+TSX_EARLY_CLOSE = {  # 1:00 p.m. ET
+    "2026-12-24": "Christmas Eve",
+    "2027-12-24": "Christmas Eve",
+}
+CA_SUFFIXES = (".TO", ".V")
+US_HOLIDAYS, US_EARLY_CLOSE = NYSE_HOLIDAYS, NYSE_EARLY_CLOSE
+EXCHANGE = "NYSE"
+
+
+def is_canadian(sym):
+    """True for a Toronto (.TO) or TSX Venture (.V) ticker."""
+    return str(sym or "").strip().upper().endswith(CA_SUFFIXES)
+
+
+def yahoo_ticker(sym):
+    """BRK.B -> BRK-B; a Canadian ticker keeps its exchange suffix: CTC.A.TO -> CTC-A.TO."""
+    s = str(sym or "").strip().upper()
+    for suf in CA_SUFFIXES:
+        if s.endswith(suf):
+            return s[:-len(suf)].replace(".", "-") + suf
+    return s.replace(".", "-")
+
+
+def use_market(sym):
+    """Switch this run's calendar to the ticker's exchange: the TSX for .TO / .V, else the NYSE."""
+    global NYSE_HOLIDAYS, NYSE_EARLY_CLOSE, EXCHANGE
+    if is_canadian(sym):
+        NYSE_HOLIDAYS, NYSE_EARLY_CLOSE, EXCHANGE = TSX_HOLIDAYS, TSX_EARLY_CLOSE, "TSX"
+    else:
+        NYSE_HOLIDAYS, NYSE_EARLY_CLOSE, EXCHANGE = US_HOLIDAYS, US_EARLY_CLOSE, "NYSE"
+
 CALENDAR_YEARS = (2026, 2027)
 OPEN = datetime.time(9, 30)
 CLOSE = datetime.time(16, 0)
@@ -204,7 +260,7 @@ def trading_day(d):
         return False, "weekend"
     name = NYSE_HOLIDAYS.get(d.isoformat())
     if name:
-        return False, "NYSE holiday: " + name
+        return False, "%s holiday: %s" % (EXCHANGE, name)
     return True, ""
 
 
@@ -228,7 +284,7 @@ def next_open(d):
 # ---------------------------------------------------------------- Yahoo
 
 def yahoo_symbol(sym):
-    return sym.upper().replace(".", "-")
+    return yahoo_ticker(sym)
 
 
 def chart_path(sym, rng, interval):
@@ -430,7 +486,7 @@ def evaluate(chart, now_utc, setup="orb", or_minutes=15, interval="5m", level=No
     res["data_time"] = to_eastern(utc_of(dt)).strftime("%Y-%m-%d %H:%M:%S") if dt else None
     ok, why = trading_day(day)
     if not ok:
-        res.update(status="no-data", phase="closed", reason="the NYSE is closed today (%s)" % why,
+        res.update(status="no-data", phase="closed", reason="the %s is closed today (%s)" % (EXCHANGE, why),
                    next_open=next_open(day))
         return res
     o, c = session(day)
@@ -475,7 +531,7 @@ def evaluate(chart, now_utc, setup="orb", or_minutes=15, interval="5m", level=No
     res["bars_closed"] = len(bars)
 
     if local < open_dt:
-        res.update(phase="pre-open", reason="the NYSE opens at 9:30%s" % (
+        res.update(phase="pre-open", reason="the " + EXCHANGE + " opens at 9:30%s" % (
             " and the %d-minute range is set at %s" % (or_minutes, short(or_end)) if setup == "orb" else ""))
         return res
 
@@ -808,6 +864,7 @@ def cmd_check(a):
     cfg = read_config(a.config)
     opts = _opts(a, cfg)
     sym = a.symbol.upper()
+    use_market(sym)
     chart, now = _load(a, sym, parse_now(a.now) if a.now else None)
     res = evaluate(chart, now, **opts)
     if a.write:
@@ -826,6 +883,7 @@ def cmd_watch(a):
     cfg = read_config(a.config)
     opts = _opts(a, cfg)
     sym = a.symbol.upper()
+    use_market(sym)
     if a.every <= 0:
         raise EntryError("--every must be above 0 seconds")
     start = parse_now(a.now) if a.now else None
@@ -877,6 +935,7 @@ def cmd_watchlist(a):
     rows = []
     for i, h in enumerate(hits):
         sym = str(h["symbol"]).upper()
+        use_market(sym)
         o = dict(opts)
         if a.setup == "level" and o["level"] is None:
             o["level"] = h.get("level")

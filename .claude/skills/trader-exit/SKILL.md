@@ -70,6 +70,13 @@ A level setup has no opening range to lean on, so it needs a stop you name.
   win or lose, no overnight hold. On a 1:00 p.m. early close it moves up to
   12:55. An entry at or after the flat-by time is refused.
 
+## Canadian tickers (.TO / .V)
+
+Toronto (`RY.TO`, `CTC.A.TO`, `AP.UN.TO`) and TSX Venture (`ONE.V`) tickers
+work as they are: the tool asks Yahoo for `CTC-A.TO` and uses the TSX holiday
+calendar for them (Boxing Day closed, US Thanksgiving open, 1:00 p.m. close on
+Christmas Eve). Prices are Canadian dollars even where a line prints `$`.
+
 ## Steps
 
 1. Run it right after `/trader-entry` triggers. Before that, `--entry PRICE`
