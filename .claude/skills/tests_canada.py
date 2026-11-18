@@ -195,7 +195,8 @@ class Wealthsimple(unittest.TestCase):
         self.assertIn("Wealthsimple (you enter it in the app)", text)
         self.assertIn("search IVN, pick the TSX listing", text)
         self.assertIn("Buy 4 IVN.TO, market order", text)
-        self.assertIn("stop-limit, stop 7.75, limit 7.71", text)
+        self.assertIn("Stop market, stop price 7.75", text)
+        self.assertIn("Stop limit: stop 7.75, limit 7.71", text)
         self.assertNotIn("place_stock_order with exactly", text)
         self.assertNotIn("currency fee", text)
 
@@ -212,7 +213,7 @@ class Wealthsimple(unittest.TestCase):
     def test_a_sell_cancels_the_stop_first(self):
         steps = "\n".join(ticket.wealthsimple_steps({"symbol": "IVN.TO", "side": "sell", "qty": "4",
                                                      "type": "market"}))
-        self.assertIn("Cancel any open stop-limit", steps)
+        self.assertIn("Cancel any open stop order", steps)
 
     def test_stop_limit_price(self):
         self.assertEqual(ticket.stop_limit_price(7.75), 7.71)

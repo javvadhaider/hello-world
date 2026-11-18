@@ -397,18 +397,20 @@ def wealthsimple_steps(order, paper=False):
         stop = _f(order.get("stop_loss_stop_price"))
         target = _f(order.get("take_profit_limit_price"))
         if stop:
-            out.append("    2. As soon as it fills: Sell %s %s, stop-limit, stop %s, limit %s, good for day."
-                       % (qty, sym, _cents(stop), _cents(stop_limit_price(stop))))
-            out.append("       This is your stop-loss. In a fast drop past %s it may not fill: then sell at"
-                       % _cents(stop_limit_price(stop)))
-            out.append("       market yourself.")
+            out.append("    2. As soon as it fills: Sell %s %s, Stop market, stop price %s. This is your"
+                       % (qty, sym, _cents(stop)))
+            out.append("       stop-loss: it sells at the next price once %s trades (it can fill lower in a"
+                       % _cents(stop))
+            out.append("       fast drop). Stop market works during market hours only. If it is greyed out,")
+            out.append("       use Stop limit: stop %s, limit %s (it may not fill if the price jumps past it)."
+                       % (_cents(stop), _cents(stop_limit_price(stop))))
         if target:
-            out.append("    3. Target %s: Wealthsimple has no bracket order and the stop-limit already holds"
+            out.append("    3. Target %s: Wealthsimple has no bracket order and the stop order already holds"
                        % _cents(target))
             out.append("       your shares, so there is no second sell order. /trader-alerts rings at the")
-            out.append("       target and at your flat-by time: then cancel the stop-limit and sell at market.")
+            out.append("       target and at your flat-by time: then cancel the stop order and sell at market.")
     else:
-        out.append("    1. Cancel any open stop-limit order on %s first (it holds the shares)." % sym)
+        out.append("    1. Cancel any open stop order on %s first (it holds the shares)." % sym)
         out.append("    2. Sell %s %s, %s order." % (qty, sym, "market" if typ == "market" else typ))
     if not is_canadian(sym):
         out.append("  %s is a US stock: Wealthsimple converts your Canadian dollars, with a currency fee" % sym)

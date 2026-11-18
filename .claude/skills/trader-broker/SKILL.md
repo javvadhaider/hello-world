@@ -154,10 +154,11 @@ the ticket lists what to tap, in order:
 
 1. Buy the whole shares (`IVN.TO` is `IVN` on the TSX in the app); fractional
    orders on Wealthsimple are market-only.
-2. As soon as it fills: a stop-limit sell at the stop, limit 0.5 % under it
-   (at least one cent). In a fast drop past the limit it may not fill.
-3. No take-profit order: the stop-limit holds the shares. /trader-alerts rings
-   at the target and at the flat-by time; then cancel the stop-limit and sell
+2. As soon as it fills: a Stop market sell at the stop (the app offers it
+   during market hours only). If it is greyed out, a Stop limit sell at the
+   stop with the limit 0.5 % under it, which may not fill in a fast drop.
+3. No take-profit order: the stop order holds the shares. /trader-alerts rings
+   at the target and at the flat-by time; then cancel the stop order and sell
    at market.
 
 Wealthsimple has no practice account: with `"paper": true` the ticket says not
