@@ -188,6 +188,38 @@ class RiskAndBroker(unittest.TestCase):
         self.assertIn("place_stock_order with exactly", text)
 
 
+class Wealthsimple(unittest.TestCase):
+    def test_steps_for_a_tsx_bracket(self):
+        text, _ = ticket.render(bracket("IVN.TO"), 1, 1, {"broker": "wealthsimple", "paper": False}, None, {},
+                                "2026-11-12")
+        self.assertIn("Wealthsimple (you enter it in the app)", text)
+        self.assertIn("search IVN, pick the TSX listing", text)
+        self.assertIn("Buy 4 IVN.TO, market order", text)
+        self.assertIn("stop-limit, stop 7.75, limit 7.71", text)
+        self.assertNotIn("place_stock_order with exactly", text)
+        self.assertNotIn("currency fee", text)
+
+    def test_paper_says_do_not_enter_it(self):
+        text, _ = ticket.render(bracket("IVN.TO"), 1, 1, {"broker": "wealthsimple", "paper": True}, None, {},
+                                "2026-11-12")
+        self.assertIn("Do NOT enter this in the app", text)
+
+    def test_us_stock_warns_about_currency(self):
+        text, _ = ticket.render(bracket("F", 12.00, 11.88, 12.24, qty=3), 1, 1, {"broker": "wealthsimple"},
+                                None, {}, "2026-11-12")
+        self.assertIn("currency fee", text)
+
+    def test_a_sell_cancels_the_stop_first(self):
+        steps = "\n".join(ticket.wealthsimple_steps({"symbol": "IVN.TO", "side": "sell", "qty": "4",
+                                                     "type": "market"}))
+        self.assertIn("Cancel any open stop-limit", steps)
+
+    def test_stop_limit_price(self):
+        self.assertEqual(ticket.stop_limit_price(7.75), 7.71)
+        self.assertEqual(ticket.stop_limit_price(1.00), 0.99)
+        self.assertEqual(ticket.stop_limit_price(0.38), 0.37)
+
+
 class News(unittest.TestCase):
     def test_tsx_mentions(self):
         pats = news.mention_patterns({"RY.TO": None, "CTC.A.TO": None})

@@ -144,6 +144,28 @@ by hand at the user's Canadian broker (Questrade, Wealthsimple, IBKR...), in
 Canadian dollars. Never call `place_stock_order` for one. After they enter it:
 `ticket.py result --index N --status placed|failed`.
 
+## Setup C: Wealthsimple (you enter it in the app)
+
+Set `"broker": "wealthsimple"` in trader/config.json. Wealthsimple has no
+official order API, so Claude never places anything there and never uses an
+unofficial one (they need the user's login and break Wealthsimple's terms). It
+also has no bracket orders. After trader-risk passes and the user says yes,
+the ticket lists what to tap, in order:
+
+1. Buy the whole shares (`IVN.TO` is `IVN` on the TSX in the app); fractional
+   orders on Wealthsimple are market-only.
+2. As soon as it fills: a stop-limit sell at the stop, limit 0.5 % under it
+   (at least one cent). In a fast drop past the limit it may not fill.
+3. No take-profit order: the stop-limit holds the shares. /trader-alerts rings
+   at the target and at the flat-by time; then cancel the stop-limit and sell
+   at market.
+
+Wealthsimple has no practice account: with `"paper": true` the ticket says not
+to enter it, and the yes only logs a practice trade. A US stock on Wealthsimple
+carries a currency-conversion fee each way unless the user holds US dollars.
+Day trade in a personal (non-registered) account: frequent trading in a TFSA
+can be taxed as business income.
+
 ## Steps: the entry
 
 1. `ticket.py show`. Only READY tickets go to the user. A ticket that is NOT

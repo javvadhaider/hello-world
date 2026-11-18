@@ -359,12 +359,70 @@ MANUAL = ["  Alpaca trades US stocks only, so Claude cannot send this one. Enter
           "  Canadian dollars: the entry, then the stop-loss and the take-profit."]
 
 
+def _cents(x):
+    return "%.2f" % x
+
+
+def stop_limit_price(stop):
+    """The limit under a stop-limit sell: 0.5% below the stop, at least one cent, rounded down."""
+    gap = max(0.01, stop * 0.005)
+    return max(0.01, int((stop - gap) * 100 + 1e-9) / 100.0)
+
+
+def app_name(sym):
+    """How the Wealthsimple app lists a ticker: IVN.TO -> IVN on the TSX, CTC.A.TO -> CTC.A on the TSX."""
+    for suf, board in ((".TO", "TSX"), (".V", "TSX Venture")):
+        if sym.endswith(suf):
+            return "%s (search %s, pick the %s listing)" % (sym, sym[:-len(suf)], board)
+    return sym
+
+
+def wealthsimple_steps(order, paper=False):
+    """Wealthsimple has no API Claude can use and no bracket orders: what to tap, in order."""
+    sym = str(order.get("symbol", "")).upper()
+    qty = order.get("qty") or order.get("notional")
+    side = str(order.get("side", "")).lower()
+    typ = str(order.get("type") or "market").lower()
+    if paper:
+        out = ["  PAPER: Wealthsimple has no practice account. Do NOT enter this in the app: a yes",
+               "  only logs it as a practice trade. With real money (\"paper\": false) the steps are:"]
+    else:
+        out = ["  Wealthsimple has no order API, so Claude cannot send this. Enter it yourself in the",
+               "  Wealthsimple app, in a personal (non-registered) account:"]
+    out.append("    Stock: %s" % app_name(sym))
+    if side == "buy":
+        how = ("limit %s" % _cents(_f(order.get("limit_price")))) if typ == "limit" and _f(order.get("limit_price")) \
+            else "market"
+        out.append("    1. Buy %s %s, %s order, whole shares (fractional orders are market-only)." % (qty, sym, how))
+        stop = _f(order.get("stop_loss_stop_price"))
+        target = _f(order.get("take_profit_limit_price"))
+        if stop:
+            out.append("    2. As soon as it fills: Sell %s %s, stop-limit, stop %s, limit %s, good for day."
+                       % (qty, sym, _cents(stop), _cents(stop_limit_price(stop))))
+            out.append("       This is your stop-loss. In a fast drop past %s it may not fill: then sell at"
+                       % _cents(stop_limit_price(stop)))
+            out.append("       market yourself.")
+        if target:
+            out.append("    3. Target %s: Wealthsimple has no bracket order and the stop-limit already holds"
+                       % _cents(target))
+            out.append("       your shares, so there is no second sell order. /trader-alerts rings at the")
+            out.append("       target and at your flat-by time: then cancel the stop-limit and sell at market.")
+    else:
+        out.append("    1. Cancel any open stop-limit order on %s first (it holds the shares)." % sym)
+        out.append("    2. Sell %s %s, %s order." % (qty, sym, "market" if typ == "market" else typ))
+    if not is_canadian(sym):
+        out.append("  %s is a US stock: Wealthsimple converts your Canadian dollars, with a currency fee" % sym)
+        out.append("  each way unless your plan holds US dollars. On a small trade that fee can be the profit.")
+    return out
+
+
 def render(order, idx, total, cfg, risk, state, today):
     ready, label, rv = status_of(order, risk, state, today)
     broker = str(cfg.get("broker", "alpaca")).lower()
     paper = cfg.get("paper", True)
     acct = "PAPER account" if paper else "LIVE ACCOUNT, REAL MONEY"
-    lines = ["ORDER %d of %d, %s, %s" % (idx, total, acct, "Interactive Brokers" if broker == "ibkr" else "Alpaca")]
+    name = {"ibkr": "Interactive Brokers", "wealthsimple": "Wealthsimple (you enter it in the app)"}.get(broker, "Alpaca")
+    lines = ["ORDER %d of %d, %s, %s" % (idx, total, acct, name)]
     for part in plain_parts(order):
         lines.append("  " + part)
     if order.get("why"):
@@ -372,8 +430,11 @@ def render(order, idx, total, cfg, risk, state, today):
     lines.append("  " + label)
     for w in (rv or {}).get("warnings", []):
         lines.append("  note: " + w)
-    manual = broker != "ibkr" and is_canadian(order.get("symbol"))
-    if manual:
+    ws = broker == "wealthsimple"
+    manual = ws or (broker != "ibkr" and is_canadian(order.get("symbol")))
+    if ws:
+        lines.extend(wealthsimple_steps(order, paper))
+    elif manual:
         lines.extend(MANUAL)
     elif broker == "ibkr":
         lines.append("  Claude drafts this with the Interactive Brokers connector. IBKR sends it to your")
@@ -531,6 +592,10 @@ def cmd_approve(a):
     print("Recorded your yes for order %d: %s." % (a.index, plain(order)))
     if str(cfg.get("broker", "alpaca")).lower() == "ibkr":
         print("Now draft it with the Interactive Brokers connector; approve it in your IBKR account.")
+    elif str(cfg.get("broker", "")).lower() == "wealthsimple":
+        print("\n".join(l.rstrip()[2:] if l.startswith("  ") else l for l in wealthsimple_steps(order, cfg.get("paper", True))))
+        print("Do not call place_stock_order. Once you have entered it: ticket.py result --index %d "
+              "--status placed|failed" % a.index)
     elif is_canadian(order.get("symbol")):
         print("\n".join(l.strip() for l in MANUAL))
         print("Do not call place_stock_order. Once you have entered it: ticket.py result --index %d "
